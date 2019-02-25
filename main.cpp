@@ -1,0 +1,346 @@
+
+#include "mbed.h"
+#include "EasyAttach_CameraAndLCD.h"
+#include "dcache-control.h"
+#include "JPEG_Converter.h"
+#include "HTTPServer.h"
+#include "FATFileSystem.h"
+#include "RomRamBlockDevice.h"
+#include "SDBlockDevice_GRBoard.h"
+#include "EthernetInterface.h"
+#include "file_table.h"         //Binary data of web pages
+#include "DhcpServer.h"
+
+#include "r_dk2_if.h"
+#include "r_drp_simple_isp.h"
+
+/**** User Selection *********/
+/** Network setting **/
+#define USE_DHCP               (0)                 /* Select  0(static configuration) or 1(use DHCP) */
+#if (USE_DHCP == 0)
+  #define IP_ADDRESS           ("192.168.0.1")     /* IP address      */
+  #define SUBNET_MASK          ("255.255.255.0")   /* Subnet mask     */
+  #define DEFAULT_GATEWAY      ("192.168.0.1")     /* Default gateway */
+#endif
+/** JPEG out setting **/
+#define JPEG_ENCODE_QUALITY    (75)                /* JPEG encode quality (min:1, max:75 (Considering the size of JpegBuffer, about 75 is the upper limit.)) */
+/*****************************/
+
+/*! Frame buffer stride: Frame buffer stride should be set to a multiple of 32 or 128
+    in accordance with the frame buffer burst transfer mode. */
+#define VIDEO_PIXEL_HW         (640)
+#define VIDEO_PIXEL_VW         (480)
+
+#define FRAME_BUFFER_STRIDE    (((VIDEO_PIXEL_HW * 1) + 31u) & ~31u)
+#define FRAME_BUFFER_STRIDE_2  (((VIDEO_PIXEL_HW * 2) + 31u) & ~31u)
+#define FRAME_BUFFER_HEIGHT    (VIDEO_PIXEL_VW)
+
+#define DRP_FLG_TILE_ALL       (R_DK2_TILE_0 | R_DK2_TILE_1 | R_DK2_TILE_2 | R_DK2_TILE_3 | R_DK2_TILE_4 | R_DK2_TILE_5)
+#define DRP_FLG_CAMER_IN       (0x00000100)
+
+DisplayBase Display;
+EthernetInterface network;
+
+static uint8_t fbuf_bayer[FRAME_BUFFER_STRIDE * FRAME_BUFFER_HEIGHT]__attribute((aligned(128)));
+static uint8_t fbuf_yuv[FRAME_BUFFER_STRIDE_2 * FRAME_BUFFER_HEIGHT]__attribute((aligned(32)));
+
+FATFileSystem fs("storage");
+RomRamBlockDevice romram_bd(512000, 512);
+SDBlockDevice_GRBoard sd;
+
+static uint8_t JpegBuffer[2][1024 * 128]__attribute((aligned(32)));
+static size_t jcu_encode_size[2];
+static int image_change = 0;
+static JPEG_Converter Jcu;
+static int jcu_buf_index_write = 0;
+static int jcu_buf_index_write_done = 0;
+static int jcu_buf_index_read = 0;
+static int jcu_encoding = 0;
+
+#if defined(__ICCARM__)
+static r_drp_simple_isp_t param_isp @ ".mirrorram";
+#else
+static r_drp_simple_isp_t param_isp __attribute((section("NC_BSS")));
+#endif
+static uint8_t drp_lib_id[R_DK2_TILE_NUM] = {0};
+static Thread drpTask(osPriorityHigh);
+static Thread sdConnectTask;
+
+static void set_param_16bit(const char* path, char* str, uint16_t* pram) {
+    if (*path != '\0') {
+        int32_t val = strtol(path+1, NULL, 16);
+        *pram = (uint32_t)val;
+    }
+    sprintf(str, "%04x", *pram);
+}
+
+// Temporary bug fix for Simple ISP library.
+static void set_param_bias(const char* path, char* str, int8_t* pram) {
+    int8_t wk_data;
+
+    if (*path != '\0') {
+        int32_t val = strtol(path+1, NULL, 16);
+        wk_data = (int8_t)val;
+        if (wk_data < 0) {
+            wk_data = (-129 - wk_data);
+        }
+        *pram = wk_data;
+    }
+    wk_data = *pram;
+    if (wk_data < 0) {
+        wk_data = (-129 - wk_data);
+    }
+    sprintf(str, "%02x", wk_data & 0x00FF);
+}
+
+static void set_param_8bit(const char* path, char* str, uint8_t* pram) {
+    if (*path != '\0') {
+        int32_t val = strtol(path+1, NULL, 16);
+        *pram = (uint32_t)val;
+    }
+    sprintf(str, "%02x", *pram & 0x00FF);
+}
+
+static int snapshot_req(const char* rootPath, const char* path, const char ** pp_data) {
+    static char ret_str[16];
+
+    if (strcmp(rootPath, "/camera") == 0) {
+        int encode_size;
+
+        while ((jcu_encoding == 1) || (image_change == 0)) {
+            ThisThread::sleep_for(1);
+        }
+        jcu_buf_index_read = jcu_buf_index_write_done;
+        image_change = 0;
+
+        *pp_data = (const char *)JpegBuffer[jcu_buf_index_read];
+        encode_size = (int)jcu_encode_size[jcu_buf_index_read];
+
+        return encode_size;
+    }
+
+    if (strcmp(rootPath, "/gain_r") == 0) {
+        set_param_16bit(path, ret_str, &param_isp.gain_r);
+    } else if (strcmp(rootPath, "/gain_g") == 0) {
+        set_param_16bit(path, ret_str, &param_isp.gain_g);
+    } else if (strcmp(rootPath, "/gain_b") == 0) {
+        set_param_16bit(path, ret_str, &param_isp.gain_b);
+    } else if (strcmp(rootPath, "/bias_r") == 0) {
+        set_param_bias(path, ret_str, &param_isp.bias_r);
+    } else if (strcmp(rootPath, "/bias_g") == 0) {
+        set_param_bias(path, ret_str, &param_isp.bias_g);
+    } else if (strcmp(rootPath, "/bias_b") == 0) {
+        set_param_bias(path, ret_str, &param_isp.bias_b);
+    } else if (strcmp(rootPath, "/blend") == 0) {
+        set_param_16bit(path, ret_str, &param_isp.blend);
+    } else if (strcmp(rootPath, "/strength") == 0) {
+        set_param_8bit(path, ret_str, &param_isp.strength);
+    } else if (strcmp(rootPath, "/coring") == 0) {
+        set_param_8bit(path, ret_str, &param_isp.coring);
+    } else {
+        return 0;
+    }
+
+    *pp_data = (const char *)ret_str;
+    return strlen(ret_str);
+}
+
+static void IntCallbackFunc_Vfield(DisplayBase::int_type_t int_type) {
+    drpTask.flags_set(DRP_FLG_CAMER_IN);
+}
+
+static void cb_drp_finish(uint8_t id) {
+    uint32_t tile_no;
+    uint32_t set_flgs = 0;
+
+    // Change the operation state of the DRP library notified by the argument to finish
+    for (tile_no = 0; tile_no < R_DK2_TILE_NUM; tile_no++) {
+        if (drp_lib_id[tile_no] == id) {
+            set_flgs |= (1 << tile_no);
+        }
+    }
+    drpTask.flags_set(set_flgs);
+}
+
+static void JcuEncodeCallBackFunc(JPEG_Converter::jpeg_conv_error_t err_code) {
+    if (err_code == JPEG_Converter::JPEG_CONV_OK) {
+        jcu_buf_index_write_done = jcu_buf_index_write;
+        image_change = 1;
+    }
+    jcu_encoding = 0;
+}
+
+static void Start_Video_Camera(void) {
+    // Video capture setting (progressive form fixed)
+    Display.Video_Write_Setting(
+        DisplayBase::VIDEO_INPUT_CHANNEL_0,
+        DisplayBase::COL_SYS_NTSC_358,
+        (void *)fbuf_bayer,
+        FRAME_BUFFER_STRIDE,
+        DisplayBase::VIDEO_FORMAT_RAW8,
+        DisplayBase::WR_RD_WRSWA_NON,
+        VIDEO_PIXEL_VW,
+        VIDEO_PIXEL_HW
+    );
+    EasyAttach_CameraStart(Display, DisplayBase::VIDEO_INPUT_CHANNEL_0);
+}
+
+static void drp_task(void) {
+    JPEG_Converter  Jcu;
+    JPEG_Converter::bitmap_buff_info_t bitmap_buff_info;
+    JPEG_Converter::encode_options_t   encode_options;
+
+    EasyAttach_Init(Display);
+    // Interrupt callback function setting (Field end signal for recording function in scaler 0)
+    Display.Graphics_Irq_Handler_Set(DisplayBase::INT_TYPE_S0_VFIELD, 0, IntCallbackFunc_Vfield);
+    Start_Video_Camera();
+
+    R_DK2_Initialize();
+
+    /* Load DRP Library                 */
+    /*        +-----------------------+ */
+    /* tile 0 |                       | */
+    /*        +                       + */
+    /* tile 1 |                       | */
+    /*        +                       + */
+    /* tile 2 |                       | */
+    /*        + SimpleIsp bayer2yuv_6 + */
+    /* tile 3 |                       | */
+    /*        +                       + */
+    /* tile 4 |                       | */
+    /*        +                       + */
+    /* tile 5 |                       | */
+    /*        +-----------------------+ */
+    R_DK2_Load(g_drp_lib_simple_isp_bayer2yuv_6,
+               R_DK2_TILE_0,
+               R_DK2_TILE_PATTERN_6, NULL, &cb_drp_finish, drp_lib_id);
+    R_DK2_Activate(0, 0);
+
+    memset(&param_isp, 0, sizeof(param_isp));
+    param_isp.src    = (uint32_t)fbuf_bayer;
+    param_isp.dst    = (uint32_t)fbuf_yuv;
+    param_isp.width  = VIDEO_PIXEL_HW;
+    param_isp.height = VIDEO_PIXEL_VW;
+    param_isp.gain_r = 0x1266;
+    param_isp.gain_g = 0x0CB0;
+    param_isp.gain_b = 0x1359;
+
+    // Jpeg setting
+    bitmap_buff_info.width              = VIDEO_PIXEL_HW;
+    bitmap_buff_info.height             = VIDEO_PIXEL_VW;
+    bitmap_buff_info.format             = JPEG_Converter::WR_RD_YCbCr422;
+    bitmap_buff_info.buffer_address     = (void *)fbuf_yuv;
+    encode_options.encode_buff_size     = sizeof(JpegBuffer[0]);
+    encode_options.p_EncodeCallBackFunc = &JcuEncodeCallBackFunc;
+    encode_options.input_swapsetting    = JPEG_Converter::WR_RD_WRSWA_32_16BIT;
+
+    while (true) {
+        ThisThread::flags_wait_all(DRP_FLG_CAMER_IN);
+        R_DK2_Start(drp_lib_id[0], (void *)&param_isp, sizeof(r_drp_simple_isp_t));
+
+        ThisThread::flags_wait_all(DRP_FLG_TILE_ALL);
+        dcache_invalid(JpegBuffer, sizeof(JpegBuffer));
+        jcu_encoding = 1;
+        if (jcu_buf_index_read == jcu_buf_index_write) {
+            jcu_buf_index_write ^= 1;  // toggle
+        }
+        jcu_encode_size[jcu_buf_index_write] = 0;
+        dcache_invalid(JpegBuffer[jcu_buf_index_write], sizeof(JpegBuffer[0]));
+        if (Jcu.encode(&bitmap_buff_info, JpegBuffer[jcu_buf_index_write],
+            &jcu_encode_size[jcu_buf_index_write], &encode_options) != JPEG_Converter::JPEG_CONV_OK) {
+            jcu_encode_size[jcu_buf_index_write] = 0;
+            jcu_encoding = 0;
+        }
+    }
+}
+
+static void mount_romramfs(void) {
+    FILE * fp;
+
+    romram_bd.SetRomAddr(0x20000000, 0x2FFFFFFF);
+    fs.format(&romram_bd, 512);
+    fs.mount(&romram_bd);
+
+    //index.htm
+    fp = fopen("/storage/index.htm", "w");
+    fwrite(index_htm_tbl, sizeof(char), sizeof(index_htm_tbl), fp);
+    fclose(fp);
+
+    //camera.js
+    fp = fopen("/storage/camera.js", "w");
+    fwrite(camaera_js_tbl, sizeof(char), sizeof(camaera_js_tbl), fp);
+    fclose(fp);
+}
+
+static void sd_connect_task(void) {
+    int storage_type = 0;
+
+    while (1) {
+        if (storage_type == 0) {
+            if (sd.connect()) {
+                fs.unmount();
+                fs.mount(&sd);
+                storage_type = 1;
+                printf("SDBlockDevice\r\n");
+            }
+        } else {
+            if (sd.connected() == false) {
+                fs.unmount();
+                fs.mount(&romram_bd);
+                storage_type = 0;
+                printf("RomRamBlockDevice\r\n");
+            }
+        }
+        ThisThread::sleep_for(250);
+    }
+}
+
+int main(void) {
+    printf("********* PROGRAM START ***********\r\n");
+
+    mount_romramfs();   //RomRamFileSystem Mount
+
+    sdConnectTask.start(&sd_connect_task);
+
+    // Start DRP task
+    drpTask.start(callback(drp_task));
+
+    printf("Network Setting up...\r\n");
+#if (USE_DHCP == 0)
+    network.set_dhcp(false);
+    if (network.set_network(IP_ADDRESS, SUBNET_MASK, DEFAULT_GATEWAY) != 0) { //for Static IP Address (IPAddress, NetMasks, Gateway)
+        printf("Network Set Network Error \r\n");
+    }
+#endif
+
+    printf("\r\nConnecting...\r\n");
+    if (network.connect() != 0) {
+        printf("Network Connect Error \r\n");
+        return -1;
+    }
+    printf("MAC Address is %s\r\n", network.get_mac_address());
+    printf("IP Address is %s\r\n", network.get_ip_address());
+    printf("NetMask is %s\r\n", network.get_netmask());
+    printf("Gateway Address is %s\r\n", network.get_gateway());
+    printf("Network Setup OK\r\n");
+
+#if (USE_DHCP == 0)
+    DhcpServer dhcp_server(&network, "RZ/A2M");
+#endif
+
+    SnapshotHandler::attach_req(&snapshot_req);
+    HTTPServerAddHandler<SnapshotHandler>("/camera"); //Camera
+    HTTPServerAddHandler<SnapshotHandler>("/gain_r");
+    HTTPServerAddHandler<SnapshotHandler>("/gain_g");
+    HTTPServerAddHandler<SnapshotHandler>("/gain_b");
+    HTTPServerAddHandler<SnapshotHandler>("/bias_r");
+    HTTPServerAddHandler<SnapshotHandler>("/bias_g");
+    HTTPServerAddHandler<SnapshotHandler>("/bias_b");
+    HTTPServerAddHandler<SnapshotHandler>("/blend");
+    HTTPServerAddHandler<SnapshotHandler>("/strength");
+    HTTPServerAddHandler<SnapshotHandler>("/coring");
+    FSHandler::mount("/storage", "/");
+    HTTPServerAddHandler<FSHandler>("/");
+    HTTPServerStart(&network, 80);
+}
+
