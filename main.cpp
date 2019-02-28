@@ -38,15 +38,17 @@
 #define DRP_FLG_TILE_ALL       (R_DK2_TILE_0 | R_DK2_TILE_1 | R_DK2_TILE_2 | R_DK2_TILE_3 | R_DK2_TILE_4 | R_DK2_TILE_5)
 #define DRP_FLG_CAMER_IN       (0x00000100)
 
-DisplayBase Display;
-EthernetInterface network;
+static DisplayBase Display;
+static EthernetInterface network;
 
 static uint8_t fbuf_bayer[FRAME_BUFFER_STRIDE * FRAME_BUFFER_HEIGHT]__attribute((aligned(128)));
 static uint8_t fbuf_yuv[FRAME_BUFFER_STRIDE_2 * FRAME_BUFFER_HEIGHT]__attribute((aligned(32)));
 
-FATFileSystem fs("storage");
-RomRamBlockDevice romram_bd(512000, 512);
-SDBlockDevice_GRBoard sd;
+static FATFileSystem fs("storage");
+static RomRamBlockDevice romram_bd(512000, 512);
+static SDBlockDevice_GRBoard sd;
+static Mutex param_lock;
+static Timer frame_timer;
 
 static uint8_t JpegBuffer[2][1024 * 128]__attribute((aligned(32)));
 static size_t jcu_encode_size[2];
@@ -66,6 +68,7 @@ static r_drp_simple_isp_t param_isp __attribute((section("NC_BSS")));
 static uint32_t accumulate_tbl[9] __attribute((section("NC_BSS")));
 static uint8_t lut[256] __attribute((section("NC_BSS")));
 #endif
+static r_drp_simple_isp_t param_isp_req;
 static uint8_t work_lut[256];
 static double set_gamma;
 static bool ganma_change = false;
@@ -74,6 +77,7 @@ static Thread drpTask(osPriorityHigh);
 static Thread sdConnectTask;
 static uint16_t luminance;
 static uint16_t color_comp[3];
+static uint32_t frame_interval;
 
 static void set_param_16bit(const char* path, char* str, uint16_t* pram, uint16_t max) {
     if (*path != '\0') {
@@ -113,6 +117,67 @@ static void set_param_8bit(const char* path, char* str, uint8_t* pram) {
     sprintf(str, "%02x", *pram & 0x00FF);
 }
 
+static bool check_cmd(const char** p_path, const char* cmd) {
+    size_t len = strlen(cmd);
+
+    if (strncmp(*p_path, cmd, len) != 0) {
+        return false;
+    }
+
+    *p_path = (char *)((uint32_t)(*p_path) + (uint32_t)len);
+    return true;
+}
+
+static void simpile_isp(const char* path, char * ret_str) {
+    uint16_t ofs;
+
+    ret_str[0] = '\0';
+    if (*path == '\0') {
+        return;
+    }
+    path += 1;
+
+    param_lock.lock();
+    if (check_cmd(&path, "gain_r") != false) {
+        set_param_16bit(path, ret_str, &param_isp_req.gain_r, 0xFFFF);
+    } else if (check_cmd(&path, "gain_g") != false) {
+        set_param_16bit(path, ret_str, &param_isp_req.gain_g, 0xFFFF);
+    } else if (check_cmd(&path, "gain_b") != false) {
+        set_param_16bit(path, ret_str, &param_isp_req.gain_b, 0xFFFF);
+    } else if (check_cmd(&path, "bias_r") != false) {
+        set_param_bias(path, ret_str, &param_isp_req.bias_r);
+    } else if (check_cmd(&path, "bias_g") != false) {
+        set_param_bias(path, ret_str, &param_isp_req.bias_g);
+    } else if (check_cmd(&path, "bias_b") != false) {
+        set_param_bias(path, ret_str, &param_isp_req.bias_b);
+    } else if (check_cmd(&path, "blend") != false) {
+        set_param_16bit(path, ret_str, &param_isp_req.blend, 0x0100);
+    } else if (check_cmd(&path, "strength") != false) {
+        set_param_8bit(path, ret_str, &param_isp_req.strength);
+    } else if (check_cmd(&path, "coring") != false) {
+        set_param_8bit(path, ret_str, &param_isp_req.coring);
+    } else if (check_cmd(&path, "gamma") != false) {
+        if (*path != '\0') {
+            double wk_gamma = atof(path+1);
+            if (wk_gamma > 0.0) {
+                double gm = 1.0 / wk_gamma;
+                for (int i = 0; i < 256; i++) {
+                    work_lut[i] = pow(1.0*i/255, gm) * 255;
+                }
+                set_gamma = wk_gamma;
+                ganma_change = true;
+            }
+        }
+        sprintf(ret_str, "%f", set_gamma);
+    } else if (check_cmd(&path, "image_info") != false) {
+        sprintf(ret_str, "Luminance:%3hu R:%3hu G:%3hu B:%3hu fps:%2d",
+                luminance, color_comp[0], color_comp[1], color_comp[2], (int)(1000 / frame_interval));
+    } else {
+        // do nothing
+    }
+    param_lock.unlock();
+}
+
 static int snapshot_req(const char* rootPath, const char* path, const char ** pp_data) {
     static char ret_str[64];
 
@@ -129,50 +194,18 @@ static int snapshot_req(const char* rootPath, const char* path, const char ** pp
         encode_size = (int)jcu_encode_size[jcu_buf_index_read];
 
         return encode_size;
-    }
-
-    if (strcmp(rootPath, "/gain_r") == 0) {
-        set_param_16bit(path, ret_str, &param_isp.gain_r, 0xFFFF);
-    } else if (strcmp(rootPath, "/gain_g") == 0) {
-        set_param_16bit(path, ret_str, &param_isp.gain_g, 0xFFFF);
-    } else if (strcmp(rootPath, "/gain_b") == 0) {
-        set_param_16bit(path, ret_str, &param_isp.gain_b, 0xFFFF);
-    } else if (strcmp(rootPath, "/bias_r") == 0) {
-        set_param_bias(path, ret_str, &param_isp.bias_r);
-    } else if (strcmp(rootPath, "/bias_g") == 0) {
-        set_param_bias(path, ret_str, &param_isp.bias_g);
-    } else if (strcmp(rootPath, "/bias_b") == 0) {
-        set_param_bias(path, ret_str, &param_isp.bias_b);
-    } else if (strcmp(rootPath, "/blend") == 0) {
-        set_param_16bit(path, ret_str, &param_isp.blend, 0x0100);
-    } else if (strcmp(rootPath, "/strength") == 0) {
-        set_param_8bit(path, ret_str, &param_isp.strength);
-    } else if (strcmp(rootPath, "/coring") == 0) {
-        set_param_8bit(path, ret_str, &param_isp.coring);
-    } else if (strcmp(rootPath, "/gamma") == 0) {
-        if (*path != '\0') {
-            double wk_gamma = atof(path+1);
-            if (wk_gamma > 0.0) {
-                double gm = 1.0 / wk_gamma;
-                for (int i = 0; i < 256; i++) {
-                    work_lut[i] = pow(1.0*i/255, gm) * 255;
-                }
-                set_gamma = wk_gamma;
-                ganma_change = true;
-            }
-        }
-        sprintf(ret_str, "%f", set_gamma);
-    } else if (strcmp(rootPath, "/image_info") == 0) {
-        sprintf(ret_str, "Luminance:%3hu R:%3hu G:%3hu B:%3hu", luminance, color_comp[0], color_comp[1], color_comp[2]);
+    } else if (strcmp(rootPath, "/simple_isp") == 0) {
+        simpile_isp(path, ret_str);
+        *pp_data = (const char *)ret_str;
+        return strlen(ret_str);
     } else {
         return 0;
     }
-
-    *pp_data = (const char *)ret_str;
-    return strlen(ret_str);
 }
 
 static void IntCallbackFunc_Vfield(DisplayBase::int_type_t int_type) {
+    frame_interval = frame_timer.read_ms();
+    frame_timer.reset();
     drpTask.flags_set(DRP_FLG_CAMER_IN);
 }
 
@@ -221,6 +254,7 @@ static void drp_task(void) {
     // Interrupt callback function setting (Field end signal for recording function in scaler 0)
     Display.Graphics_Irq_Handler_Set(DisplayBase::INT_TYPE_S0_VFIELD, 0, IntCallbackFunc_Vfield);
     Start_Video_Camera();
+    frame_timer.start();
 
     R_DK2_Initialize();
 
@@ -243,32 +277,32 @@ static void drp_task(void) {
                R_DK2_TILE_PATTERN_6, NULL, &cb_drp_finish, drp_lib_id);
     R_DK2_Activate(0, 0);
 
-    memset(&param_isp, 0, sizeof(param_isp));
-    param_isp.src    = (uint32_t)fbuf_bayer;
-    param_isp.dst    = (uint32_t)fbuf_yuv;
-    param_isp.width  = VIDEO_PIXEL_HW;
-    param_isp.height = VIDEO_PIXEL_VW;
-    param_isp.component  = 1;
-    param_isp.accumulate = (uint32_t)accumulate_tbl;
-    param_isp.area1_offset_x = 0;
-    param_isp.area1_offset_y = 0;
-    param_isp.area1_width    = VIDEO_PIXEL_HW;
-    param_isp.area1_height   = VIDEO_PIXEL_VW;
-    param_isp.gain_r = 0x1800;
-    param_isp.gain_g = 0x1000;
-    param_isp.gain_b = 0x1C00;
+    memset(&param_isp_req, 0, sizeof(param_isp_req));
+    param_isp_req.src    = (uint32_t)fbuf_bayer;
+    param_isp_req.dst    = (uint32_t)fbuf_yuv;
+    param_isp_req.width  = VIDEO_PIXEL_HW;
+    param_isp_req.height = VIDEO_PIXEL_VW;
+    param_isp_req.component  = 1;
+    param_isp_req.accumulate = (uint32_t)accumulate_tbl;
+    param_isp_req.area1_offset_x = 0;
+    param_isp_req.area1_offset_y = 0;
+    param_isp_req.area1_width    = VIDEO_PIXEL_HW;
+    param_isp_req.area1_height   = VIDEO_PIXEL_VW;
+    param_isp_req.gain_r = 0x1800;
+    param_isp_req.gain_g = 0x1000;
+    param_isp_req.gain_b = 0x1C00;
 
     // Temporary bug fix for Simple ISP library.
-    param_isp.bias_r = (-129 +16); // -16
-    param_isp.bias_g = (-129 +16); // -16
-    param_isp.bias_b = (-129 +16); // -16
+    param_isp_req.bias_r = (-129 +16); // -16
+    param_isp_req.bias_g = (-129 +16); // -16
+    param_isp_req.bias_b = (-129 +16); // -16
 
     set_gamma = 1.0;
     for (int i = 0; i < 256; i++) {
         lut[i] = i;
     }
-    param_isp.table = (uint32_t)lut;
-    param_isp.gamma = 1;
+    param_isp_req.table = (uint32_t)lut;
+    param_isp_req.gamma = 1;
 
     // Jpeg setting
     bitmap_buff_info.width              = VIDEO_PIXEL_HW;
@@ -281,19 +315,30 @@ static void drp_task(void) {
 
     while (true) {
         ThisThread::flags_wait_all(DRP_FLG_CAMER_IN);
+
+        // Set parameters of SimpleIsp
+        param_lock.lock();
+        param_isp = param_isp_req;
         if (ganma_change != false) {
             memcpy(lut, work_lut, sizeof(lut));
             ganma_change = false;
         }
-        R_DK2_Start(drp_lib_id[0], (void *)&param_isp, sizeof(r_drp_simple_isp_t));
+        param_lock.unlock();
 
+        // Start DRP and wait for completion
+        R_DK2_Start(drp_lib_id[0], (void *)&param_isp, sizeof(r_drp_simple_isp_t));
         ThisThread::flags_wait_all(DRP_FLG_TILE_ALL);
+
+        // Luminance and color component
+        param_lock.lock();
         luminance = (uint16_t)((0.299 * accumulate_tbl[0] + 0.587 * accumulate_tbl[1] + 0.114 * accumulate_tbl[2])
                     / (VIDEO_PIXEL_HW * VIDEO_PIXEL_VW));
         color_comp[0] = (uint16_t)(accumulate_tbl[0] / (VIDEO_PIXEL_HW * VIDEO_PIXEL_VW / 4));
         color_comp[1] = (uint16_t)(accumulate_tbl[1] / (VIDEO_PIXEL_HW * VIDEO_PIXEL_VW / 2));
         color_comp[2] = (uint16_t)(accumulate_tbl[2] / (VIDEO_PIXEL_HW * VIDEO_PIXEL_VW / 4));
+        param_lock.unlock();
 
+        // Jpeg convert
         dcache_invalid(JpegBuffer, sizeof(JpegBuffer));
         jcu_encoding = 1;
         if (jcu_buf_index_read == jcu_buf_index_write) {
@@ -385,17 +430,7 @@ int main(void) {
 
     SnapshotHandler::attach_req(&snapshot_req);
     HTTPServerAddHandler<SnapshotHandler>("/camera"); //Camera
-    HTTPServerAddHandler<SnapshotHandler>("/gain_r");
-    HTTPServerAddHandler<SnapshotHandler>("/gain_g");
-    HTTPServerAddHandler<SnapshotHandler>("/gain_b");
-    HTTPServerAddHandler<SnapshotHandler>("/bias_r");
-    HTTPServerAddHandler<SnapshotHandler>("/bias_g");
-    HTTPServerAddHandler<SnapshotHandler>("/bias_b");
-    HTTPServerAddHandler<SnapshotHandler>("/blend");
-    HTTPServerAddHandler<SnapshotHandler>("/strength");
-    HTTPServerAddHandler<SnapshotHandler>("/coring");
-    HTTPServerAddHandler<SnapshotHandler>("/gamma");
-    HTTPServerAddHandler<SnapshotHandler>("/image_info");
+    HTTPServerAddHandler<SnapshotHandler>("/simple_isp");
     FSHandler::mount("/storage", "/");
     HTTPServerAddHandler<FSHandler>("/");
     HTTPServerStart(&network, 80);
