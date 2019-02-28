@@ -10,6 +10,7 @@
 #include "EthernetInterface.h"
 #include "file_table.h"         //Binary data of web pages
 #include "DhcpServer.h"
+#include "Pi_ExposureControl.h"
 
 #include "r_dk2_if.h"
 #include "r_drp_simple_isp.h"
@@ -78,6 +79,7 @@ static Thread sdConnectTask;
 static uint16_t luminance;
 static uint16_t color_comp[3];
 static uint32_t frame_interval;
+static uint8_t auto_exposure;
 
 static void set_param_16bit(const char* path, char* str, uint16_t* pram, uint16_t max) {
     if (*path != '\0') {
@@ -129,8 +131,6 @@ static bool check_cmd(const char** p_path, const char* cmd) {
 }
 
 static void simpile_isp(const char* path, char * ret_str) {
-    uint16_t ofs;
-
     ret_str[0] = '\0';
     if (*path == '\0') {
         return;
@@ -196,6 +196,23 @@ static int snapshot_req(const char* rootPath, const char* path, const char ** pp
         return encode_size;
     } else if (strcmp(rootPath, "/simple_isp") == 0) {
         simpile_isp(path, ret_str);
+        *pp_data = (const char *)ret_str;
+        return strlen(ret_str);
+    } else if (strcmp(rootPath, "/auto_exposure") == 0) {
+        if (*path != '\0') {
+            if (strcmp(path+1, "on") == 0) {
+                auto_exposure = 1;
+            } else if (strcmp(path+1, "off") == 0) {
+                auto_exposure = 0;
+            } else  {
+                // do nothing
+            }
+        }
+        if (auto_exposure != 0) {
+            sprintf(ret_str, "on");
+        } else {
+            sprintf(ret_str, "off");
+        }
         *pp_data = (const char *)ret_str;
         return strlen(ret_str);
     } else {
@@ -303,6 +320,7 @@ static void drp_task(void) {
     }
     param_isp_req.table = (uint32_t)lut;
     param_isp_req.gamma = 1;
+    auto_exposure = 1;
 
     // Jpeg setting
     bitmap_buff_info.width              = VIDEO_PIXEL_HW;
@@ -337,6 +355,11 @@ static void drp_task(void) {
         color_comp[1] = (uint16_t)(accumulate_tbl[1] / (VIDEO_PIXEL_HW * VIDEO_PIXEL_VW / 2));
         color_comp[2] = (uint16_t)(accumulate_tbl[2] / (VIDEO_PIXEL_HW * VIDEO_PIXEL_VW / 4));
         param_lock.unlock();
+
+        // Exposure control
+        if (auto_exposure != 0) {
+            Pi_ExposureControl(luminance);
+        }
 
         // Jpeg convert
         dcache_invalid(JpegBuffer, sizeof(JpegBuffer));
@@ -431,6 +454,7 @@ int main(void) {
     SnapshotHandler::attach_req(&snapshot_req);
     HTTPServerAddHandler<SnapshotHandler>("/camera"); //Camera
     HTTPServerAddHandler<SnapshotHandler>("/simple_isp");
+    HTTPServerAddHandler<SnapshotHandler>("/auto_exposure");
     FSHandler::mount("/storage", "/");
     HTTPServerAddHandler<FSHandler>("/");
     HTTPServerStart(&network, 80);
