@@ -320,7 +320,7 @@ static void drp_task(void) {
     }
     param_isp_req.table = (uint32_t)lut;
     param_isp_req.gamma = 1;
-    auto_exposure = 1;
+    auto_exposure = 0;
 
     // Jpeg setting
     bitmap_buff_info.width              = VIDEO_PIXEL_HW;
