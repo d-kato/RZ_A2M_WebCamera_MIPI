@@ -60,15 +60,9 @@ static int jcu_buf_index_write_done = 0;
 static int jcu_buf_index_read = 0;
 static int jcu_encoding = 0;
 
-#if defined(__ICCARM__)
-static r_drp_simple_isp_t param_isp @ ".mirrorram";
-static uint32_t accumulate_tbl[9] @ ".mirrorram";
-static uint8_t lut[256] @ ".mirrorram";
-#else
 static r_drp_simple_isp_t param_isp __attribute((section("NC_BSS")));
 static uint32_t accumulate_tbl[9] __attribute((section("NC_BSS")));
 static uint8_t lut[256] __attribute((section("NC_BSS")));
-#endif
 static r_drp_simple_isp_t param_isp_req;
 static uint8_t work_lut[256];
 static double set_gamma;
