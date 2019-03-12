@@ -54,7 +54,6 @@ static Timer frame_timer;
 static uint8_t JpegBuffer[2][1024 * 128]__attribute((aligned(32)));
 static size_t jcu_encode_size[2];
 static int image_change = 0;
-static JPEG_Converter Jcu;
 static int jcu_buf_index_write = 0;
 static int jcu_buf_index_write_done = 0;
 static int jcu_buf_index_read = 0;
@@ -356,7 +355,6 @@ static void drp_task(void) {
         }
 
         // Jpeg convert
-        dcache_invalid(JpegBuffer, sizeof(JpegBuffer));
         jcu_encoding = 1;
         if (jcu_buf_index_read == jcu_buf_index_write) {
             jcu_buf_index_write ^= 1;  // toggle
