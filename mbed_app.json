@@ -21,6 +21,9 @@
         },
         "RZ_A2M_SBEV": {
             "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"]
+        },
+        "SEMB1402": {
+            "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"]
         }
     }
 }

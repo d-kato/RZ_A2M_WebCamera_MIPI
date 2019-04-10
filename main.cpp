@@ -17,15 +17,42 @@
 
 /**** User Selection *********/
 /** Network setting **/
-#define USE_DHCP               (0)                 /* Select  0(static configuration) or 1(use DHCP) */
+#if defined(TARGET_SEMB1402)
+  #define USE_DHCP             (1)                 /* Select  0(static configuration) or 1(use DHCP) */
+  #define NETWORK_TYPE         (2)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
+#else
+  #define USE_DHCP             (0)                 /* Select  0(static configuration) or 1(use DHCP) */
+  #define NETWORK_TYPE         (0)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
+#endif
 #if (USE_DHCP == 0)
   #define IP_ADDRESS           ("192.168.0.1")     /* IP address      */
   #define SUBNET_MASK          ("255.255.255.0")   /* Subnet mask     */
   #define DEFAULT_GATEWAY      ("192.168.0.1")     /* Default gateway */
 #endif
+#if (NETWORK_TYPE >= 1)
+  #define SCAN_NETWORK         (1)                 /* Select  0(Use WLAN_SSID, WLAN_PSK, WLAN_SECURITY) or 1(To select a network using the terminal.) */
+  #define WLAN_SSID            ("SSIDofYourAP")    /* SSID */
+  #define WLAN_PSK             ("PSKofYourAP")     /* PSK(Pre-Shared Key) */
+  #define WLAN_SECURITY        NSAPI_SECURITY_WPA_WPA2 /* NSAPI_SECURITY_NONE, NSAPI_SECURITY_WEP, NSAPI_SECURITY_WPA, NSAPI_SECURITY_WPA2 or NSAPI_SECURITY_WPA_WPA2 */
+#endif
 /** JPEG out setting **/
 #define JPEG_ENCODE_QUALITY    (75)                /* JPEG encode quality (min:1, max:75 (Considering the size of JpegBuffer, about 75 is the upper limit.)) */
 /*****************************/
+
+#if (NETWORK_TYPE == 0)
+  #include "EthernetInterface.h"
+  EthernetInterface network;
+#elif (NETWORK_TYPE == 1)
+  #error "Not supported"
+#elif (NETWORK_TYPE == 2)
+  #include "ESP32Interface.h"
+  ESP32Interface network;
+#elif (NETWORK_TYPE == 3)
+  #include "ESP32InterfaceAP.h"
+  ESP32InterfaceAP network;
+#else
+  #error NETWORK_TYPE error
+#endif /* NETWORK_TYPE */
 
 /*! Frame buffer stride: Frame buffer stride should be set to a multiple of 32 or 128
     in accordance with the frame buffer burst transfer mode. */
@@ -40,7 +67,6 @@
 #define DRP_FLG_CAMER_IN       (0x00000100)
 
 static DisplayBase Display;
-static EthernetInterface network;
 
 static uint8_t fbuf_bayer[FRAME_BUFFER_STRIDE * FRAME_BUFFER_HEIGHT]__attribute((aligned(128)));
 static uint8_t fbuf_yuv[FRAME_BUFFER_STRIDE_2 * FRAME_BUFFER_HEIGHT]__attribute((aligned(32)));
@@ -387,6 +413,104 @@ static void mount_romramfs(void) {
     fclose(fp);
 }
 
+#if (SCAN_NETWORK == 1) && (NETWORK_TYPE != 3)
+static const char *sec2str(nsapi_security_t sec) {
+    switch (sec) {
+        case NSAPI_SECURITY_NONE:
+            return "None";
+        case NSAPI_SECURITY_WEP:
+            return "WEP";
+        case NSAPI_SECURITY_WPA:
+            return "WPA";
+        case NSAPI_SECURITY_WPA2:
+            return "WPA2";
+        case NSAPI_SECURITY_WPA_WPA2:
+            return "WPA/WPA2";
+        case NSAPI_SECURITY_UNKNOWN:
+        default:
+            return "Unknown";
+    }
+}
+
+static bool scan_network(WiFiInterface *wifi) {
+    WiFiAccessPoint *ap;
+    bool ret = false;
+    int i;
+    int count = 10;    /* Limit number of network arbitrary to 10 */
+
+    printf("Scan:\r\n");
+    ap = new WiFiAccessPoint[count];
+    if (ap == NULL) {
+        printf("memory error\r\n");
+        return 0;
+    }
+    count = wifi->scan(ap, count);
+    for (i = 0; i < count; i++) {
+        printf("No.%d Network: %s secured: %s BSSID: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx RSSI: %hhd Ch: %hhd\r\n",
+               i, ap[i].get_ssid(), sec2str(ap[i].get_security()),
+               ap[i].get_bssid()[0], ap[i].get_bssid()[1], ap[i].get_bssid()[2], ap[i].get_bssid()[3],
+               ap[i].get_bssid()[4], ap[i].get_bssid()[5], ap[i].get_rssi(), ap[i].get_channel());
+    }
+    printf("%d networks available.\r\n", count);
+
+    if (count > 0) {
+        char c;
+        char pass[64];
+        int select_no;
+        bool loop_break = false;;
+
+        printf("\nPlease enter the number of the network you want to connect.\r\n");
+        printf("Enter key:[0]-[%d], (If inputting the other key, it's scanned again.)\r\n", count - 1);
+
+        c = (uint8_t)getchar();
+        select_no = c - 0x30;
+        if ((select_no >= 0) && (select_no < count)) {
+            printf("[%s] is selected.\r\n", ap[select_no].get_ssid());
+            printf("Please enter the PSK.\r\n");
+            i = 0;
+            while (loop_break == false) {
+                c = (uint8_t)getchar();
+                switch (c) {
+                    case 0x0A:
+                    #if MBED_CONF_PLATFORM_STDIO_CONVERT_NEWLINES
+                        // fall through
+                    #else
+                        break;
+                    #endif
+                    case 0x0D:
+                        pass[i] = '\0';
+                        putchar('\r');
+                        putchar('\n');
+                        loop_break = true;
+                        break;
+                    case 0x08:
+                        if (i > 0) {
+                            putchar('\b');
+                            putchar(' ');
+                            putchar('\b');
+                            i--;
+                        }
+                        break;
+                    default:
+                        if ((i + 1) < sizeof(pass)) {
+                            pass[i] = c;
+                            i++;
+                            putchar(c);
+                        }
+                        break;
+                }
+            }
+            wifi->set_credentials(ap[select_no].get_ssid(), pass, ap[select_no].get_security());
+            ret = true;
+        }
+    }
+
+    delete[] ap;
+
+    return ret;
+}
+#endif
+
 static void sd_connect_task(void) {
     int storage_type = 0;
 
@@ -428,6 +552,13 @@ int main(void) {
     }
 #endif
 
+#if (NETWORK_TYPE >= 1)
+#if (SCAN_NETWORK == 1) && (NETWORK_TYPE != 3)
+    while (!scan_network(&network));
+#else
+    network.set_credentials(WLAN_SSID, WLAN_PSK, WLAN_SECURITY);
+#endif
+#endif
     printf("\r\nConnecting...\r\n");
     if (network.connect() != 0) {
         printf("Network Connect Error \r\n");
@@ -439,7 +570,7 @@ int main(void) {
     printf("Gateway Address is %s\r\n", network.get_gateway());
     printf("Network Setup OK\r\n");
 
-#if (USE_DHCP == 0)
+#if (USE_DHCP == 0) && (NETWORK_TYPE == 0)
     DhcpServer dhcp_server(&network, "RZ/A2M");
 #endif
 

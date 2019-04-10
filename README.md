@@ -88,6 +88,11 @@ Add ``target.bootloader_img`` and ``target.app_offset`` to ``mbed_app.json`` as 
             "target.bootloader_img" : "bootloader_d_n_d/RZ_A2M_SBEV_boot.bin",
             "target.app_offset"     : "0x20000",
             "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"]
+        },
+        "SEMB1402": {
+            "target.bootloader_img" : "bootloader_d_n_d/SEMB1402_boot.bin",
+            "target.app_offset"     : "0x20000",
+            "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"]
         }
     }
 }
