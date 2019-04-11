@@ -108,7 +108,7 @@ The following connection method is switched depending on the value set in ``NETW
 | Number | Connection | Description                                   |
 |:-------|:-----------|:----------------------------------------------|
 | 0      | Ethernet   | Use Ethernet.                                 |
-| 1      | BP3595     | Not saported.                                 |
+| 1      | BP3595     | Not supported.                                |
 | 2      | ESP32 STA  | Use ESP32 in STA mode.                        |
 | 3      | ESP32 AP   | Use ESP32 in AP mode.                         |
 
