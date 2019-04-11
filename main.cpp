@@ -56,10 +56,10 @@
 
 /*! Frame buffer stride: Frame buffer stride should be set to a multiple of 32 or 128
     in accordance with the frame buffer burst transfer mode. */
-#define VIDEO_PIXEL_HW         (640)
-#define VIDEO_PIXEL_VW         (480)
+#define VIDEO_PIXEL_HW         (640)    /* VGA */
+#define VIDEO_PIXEL_VW         (480)    /* VGA */
 
-#define FRAME_BUFFER_STRIDE    (((VIDEO_PIXEL_HW * 1) + 31u) & ~31u)
+#define FRAME_BUFFER_STRIDE    (((VIDEO_PIXEL_HW * 1) + 63u) & ~63u)
 #define FRAME_BUFFER_STRIDE_2  (((VIDEO_PIXEL_HW * 2) + 31u) & ~31u)
 #define FRAME_BUFFER_HEIGHT    (VIDEO_PIXEL_VW)
 
@@ -342,6 +342,7 @@ static void drp_task(void) {
     auto_exposure = 0;
 
     // Jpeg setting
+    Jcu.SetQuality(JPEG_ENCODE_QUALITY);
     bitmap_buff_info.width              = VIDEO_PIXEL_HW;
     bitmap_buff_info.height             = VIDEO_PIXEL_VW;
     bitmap_buff_info.format             = JPEG_Converter::WR_RD_YCbCr422;

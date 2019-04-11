@@ -10,10 +10,18 @@ Simple ISP is an ISP (Image Signal Processor) most suitable for image recognitio
 Please see ``mbed-gr-libs/drp-for-mbed/TARGET_RZ_A2XX/r_drp/doc`` for details.  
 
 ## Requirements
+
+### In the case of "RZ/A2M Evaluation Board Kit" or "SBEV-RZ/A2M"
 * [RZ/A2M Evaluation Board Kit](https://www.renesas.com/jp/en/products/software-tools/boards-and-kits/eval-demo/rz-a2m-evaluation-board-kit.html) or [SBEV-RZ/A2M](http://www.shimafuji.co.jp/products/1486)
 * RaspberryPi camera
 * Ethernet cable
 * Computer
+
+### In the case of "SEMB1402"
+* [SEMB1402](http://www.shimafuji.co.jp/products/1505)
+* IoT-Engine WIFI ESP32 (SEMB1401-1)
+* RaspberryPi camera
+* Computer or smartphone
 
 ## How to use
 1. Please change the source code according to the environment to be used before building.  
@@ -26,7 +34,29 @@ When going through the network, please set ``1`` in ``USE_DHCP`` macro of ``main
 #define USE_DHCP               (1)                 /* Select  0(static configuration) or 1(use DHCP) */
 ```
 
-2. The IP address is displayed on the terminal. Please open the address in web browser.  
+2. **This step is only if you are using WiFi.**  
+  When you press the reset button of RZ/A2M board, the scan result of Wifi will be output on Terminal.  
+  ```
+  ********* PROGRAM START ***********
+  Network Setting up...
+  Scan:
+  No.0 Network: SSID_1 secured: WPA/WPA2 BSSID: xx:xx:xx:xx:xx:xx RSSI: -52 Ch: 1
+  No.1 Network: SSID_2 secured: Unknown BSSID: xx:xx:xx:xx:xx:xx RSSI: -67 Ch: 2
+  2 networks available.
+
+  Please enter the number of the network you want to connect.
+  Enter key:[0]-[1], (If inputting the other key, it's scanned again.)
+  ```
+  Enter the number of the network you want to connect from the keyboard.
+  To select SSID_1, press "0" on the keyboard.  
+  ```
+  [SSID_1] is selected.
+  please enter the PSK.
+  ```
+  Finally, enter the password to connect to the network.    
+
+
+3. The IP address is displayed on the terminal. Please open the address in web browser.  
 (When USE_DHCP is 0, the IP address is "192.168.0.1".)  
   ```
   ********* PROGRAM START ***********
@@ -40,11 +70,70 @@ When going through the network, please set ``1`` in ``USE_DHCP`` macro of ``main
   Network Setup OK
   ```
 
-3. You can change each parameter of "Simple ISP" from the Web browser.  
+4. You can change each parameter of "Simple ISP" from the Web browser.  
 ![](docs/img/camera_control.jpg)  
 
-4. Switch to web page in SD card (optional)  
+5. Switch to web page in SD card (optional)  
 When connecting the SD card, ``SDBlockDevice`` will be displayed on the terminal and the web page displayed in the web browser will switch from the built-in ROM to the SD card. The top page is ``index.htm``.  
+
+
+### Change network connection
+You can change the network connection by changing the following macro in ``main.cpp``.  
+
+```cpp
+/**** User Selection *********/
+/** Network setting **/
+#if defined(TARGET_SEMB1402)
+  #define USE_DHCP             (1)                 /* Select  0(static configuration) or 1(use DHCP) */
+  #define NETWORK_TYPE         (2)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
+#else
+  #define USE_DHCP             (0)                 /* Select  0(static configuration) or 1(use DHCP) */
+  #define NETWORK_TYPE         (0)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
+#endif
+#if (USE_DHCP == 0)
+  #define IP_ADDRESS           ("192.168.0.1")     /* IP address      */
+  #define SUBNET_MASK          ("255.255.255.0")   /* Subnet mask     */
+  #define DEFAULT_GATEWAY      ("192.168.0.1")     /* Default gateway */
+#endif
+#if (NETWORK_TYPE >= 1)
+  #define SCAN_NETWORK         (1)                 /* Select  0(Use WLAN_SSID, WLAN_PSK, WLAN_SECURITY) or 1(To select a network using the terminal.) */
+  #define WLAN_SSID            ("SSIDofYourAP")    /* SSID */
+  #define WLAN_PSK             ("PSKofYourAP")     /* PSK(Pre-Shared Key) */
+  #define WLAN_SECURITY        NSAPI_SECURITY_WPA_WPA2 /* NSAPI_SECURITY_NONE, NSAPI_SECURITY_WEP, NSAPI_SECURITY_WPA, NSAPI_SECURITY_WPA2 or NSAPI_SECURITY_WPA_WPA2 */
+#endif
+```
+
+The following connection method is switched depending on the value set in ``NETWORK_TYPE``.
+
+| Number | Connection | Description                                   |
+|:-------|:-----------|:----------------------------------------------|
+| 0      | Ethernet   | Use Ethernet.                                 |
+| 1      | BP3595     | Not saported.                                 |
+| 2      | ESP32 STA  | Use ESP32 in STA mode.                        |
+| 3      | ESP32 AP   | Use ESP32 in AP mode.                         |
+
+* In the case ``NETWORK_TYPE = 2``  
+  WLAN_SSID, WLAN_PSK and WLAN_SECURITY set the information of the access point to be connected. However, in the case of ``SCAN_NETWORK = 1``, these values are not referenced, and the connection destination is selected based on the scan result displayed on Terminal.  
+
+* In the case ``NETWORK_TYPE = 3``  
+ WLAN_SSID, WLAN_PSK and WLAN_SECURITY set the information as AP published by ESP32.  
+
+### Change the size of camera input images
+You can change the size of camera input images by changing the macro below in ``main.cpp``.   
+``JPEG_ENCODE_QUALITY`` sets the quality of JPEG encoding.
+The upper limit of "SetQuality()" is **100**, but consider the size of the memory storing the JPEG conversion result etc., the upper limit should be about **75**.  
+
+```cpp
+/** JPEG out setting **/
+#define JPEG_ENCODE_QUALITY    (75)                /* JPEG encode quality (min:1, max:75 (Considering the size of JpegBuffer, about 75 is the upper limit.)) */
+```
+
+In addition, you can change the number of pixels of the image by changing the following. As the number of pixels decreases, the transfer data decreases.
+
+```cpp
+#define VIDEO_PIXEL_HW       (320u)  /* QVGA */
+#define VIDEO_PIXEL_VW       (240u)  /* QVGA */
+```
 
 
 ## Development environment
