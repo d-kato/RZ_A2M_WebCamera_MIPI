@@ -14,22 +14,19 @@ Please see ``mbed-gr-libs/drp-for-mbed/TARGET_RZ_A2XX/r_drp/doc`` for details.
 * RaspberryPi camera
 * Computer
 
+#### In the case of Ethernet Connection
+* RZ/A2M Evaluation Board Kit or SBEV-RZ/A2M
+  * Ethernet cable
+* SEMB1402
+  * Not supported
 
-* **In the case of Ethernet Connection**
-  * RZ/A2M Evaluation Board Kit or SBEV-RZ/A2M
-    * Ethernet cable
-  * SEMB1402
-    * Not supported
-
-
-* **In the case of WiFi Connection**
-  * RZ/A2M Evaluation Board Kit
-    * [Pmod ESP32](https://store.digilentinc.com/pmod-esp32-wireless-communication-module/)  
-    ![](docs/img/Pmod_ESP32_img.jpg)  
-    ![](docs/img/Pmod_ESP32_connection.png)  
-  * SBEV-RZ/A2M or SEMB1402
-   * IoT-Engine WIFI ESP32 (SEMB1401-1)
-
+#### In the case of WiFi Connection
+* RZ/A2M Evaluation Board Kit
+  * [Pmod ESP32](https://store.digilentinc.com/pmod-esp32-wireless-communication-module/)  
+  ![](docs/img/Pmod_ESP32_img.jpg)  
+  ![](docs/img/Pmod_ESP32_connection.png)  
+* SBEV-RZ/A2M or SEMB1402
+  * IoT-Engine WIFI ESP32 (SEMB1401-1)
 
 ## How to use
 1. Please change the source code according to the environment to be used before building.  
@@ -157,6 +154,10 @@ Please refer to ``mbed-gr-libs/EasyAttach_CameraAndLCD/README.md`` for details.
         },
         === omit ===
 ```
+** Requirements **
+* ``RZ/A2M Evaluation Board Kit`` : Display Output Board  
+* ``SBEV-RZ/A2M`` : LVDS To HDMI Board  
+* ``SEMB1402`` : LVDS To HDMI Board  
 
 
 ## Development environment
