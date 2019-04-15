@@ -10,18 +10,26 @@ Simple ISP is an ISP (Image Signal Processor) most suitable for image recognitio
 Please see ``mbed-gr-libs/drp-for-mbed/TARGET_RZ_A2XX/r_drp/doc`` for details.  
 
 ## Requirements
-
-### In the case of "RZ/A2M Evaluation Board Kit" or "SBEV-RZ/A2M"
-* [RZ/A2M Evaluation Board Kit](https://www.renesas.com/jp/en/products/software-tools/boards-and-kits/eval-demo/rz-a2m-evaluation-board-kit.html) or [SBEV-RZ/A2M](http://www.shimafuji.co.jp/products/1486)
+* [RZ/A2M Evaluation Board Kit](https://www.renesas.com/jp/en/products/software-tools/boards-and-kits/eval-demo/rz-a2m-evaluation-board-kit.html) , [SBEV-RZ/A2M](http://www.shimafuji.co.jp/products/1486) or [SEMB1402](http://www.shimafuji.co.jp/products/1505)
 * RaspberryPi camera
-* Ethernet cable
 * Computer
 
-### In the case of "SEMB1402"
-* [SEMB1402](http://www.shimafuji.co.jp/products/1505)
-* IoT-Engine WIFI ESP32 (SEMB1401-1)
-* RaspberryPi camera
-* Computer or smartphone
+
+* **In the case of Ethernet Connection**
+  * RZ/A2M Evaluation Board Kit or SBEV-RZ/A2M
+    * Ethernet cable
+  * SEMB1402
+    * Not supported
+
+
+* **In the case of WiFi Connection**
+  * RZ/A2M Evaluation Board Kit
+    * [Pmod ESP32](https://store.digilentinc.com/pmod-esp32-wireless-communication-module/)  
+    ![](docs/img/Pmod_ESP32_img.jpg)  
+    ![](docs/img/Pmod_ESP32_connection.png)  
+  * SBEV-RZ/A2M or SEMB1402
+   * IoT-Engine WIFI ESP32 (SEMB1401-1)
+
 
 ## How to use
 1. Please change the source code according to the environment to be used before building.  
@@ -136,6 +144,21 @@ In addition, you can change the number of pixels of the image by changing the fo
 ```
 
 
+### LCD setting
+You can turn on the LCD display by changing the ``mbed_app.json`` file.  
+Please refer to ``mbed-gr-libs/EasyAttach_CameraAndLCD/README.md`` for details.  
+```
+{
+    "config": {
+        === omit ===
+        "lcd":{
+            "help": "0:disable 1:enable",
+            "value": "1"
+        },
+        === omit ===
+```
+
+
 ## Development environment
 Please refer to the following.  
 https://github.com/d-kato/RZ_A2M_Mbed_samples
@@ -161,13 +184,18 @@ Add ``target.bootloader_img`` and ``target.app_offset`` to ``mbed_app.json`` as 
         "lcd":{
             "help": "0:disable 1:enable",
             "value": "0"
+        },
+        "lcd-type":{
+            "help": "Please see EasyAttach_CameraAndLCD/README.md",
+            "value": null
         }
     },
     "target_overrides": {
         "*": {
             "platform.stdio-baud-rate": 115200,
             "platform.stdio-convert-newlines": true,
-            "target.macros_add": ["MBED_CONF_APP_MAIN_STACK_SIZE=8192"]
+            "target.macros_add": ["MBED_CONF_APP_MAIN_STACK_SIZE=8192",
+                                  "LCD_SIZE=SD_7INCH"]
         },
         "RZ_A2M_EVB": {
             "target.bootloader_img" : "bootloader_d_n_d/RZ_A2M_EVB_boot.bin",

@@ -46,10 +46,18 @@
   #error "Not supported"
 #elif (NETWORK_TYPE == 2)
   #include "ESP32Interface.h"
+  #if defined(TARGET_RZ_A2M_EVB)
+  ESP32Interface network(PD_6, NC, P6_3, P6_2, false, NC, NC, 400000);
+  #else
   ESP32Interface network;
+  #endif
 #elif (NETWORK_TYPE == 3)
   #include "ESP32InterfaceAP.h"
+  #if defined(TARGET_RZ_A2M_EVB)
+  ESP32InterfaceAP network(PD_6, NC, P6_3, P6_2, false, NC, NC, 400000);
+  #else
   ESP32InterfaceAP network;
+  #endif
 #else
   #error NETWORK_TYPE error
 #endif /* NETWORK_TYPE */
@@ -281,6 +289,29 @@ static void Start_Video_Camera(void) {
     EasyAttach_CameraStart(Display, DisplayBase::VIDEO_INPUT_CHANNEL_0);
 }
 
+#if MBED_CONF_APP_LCD
+static void Start_LCD_Display(void) {
+    DisplayBase::rect_t rect;
+
+    rect.vs = 0;
+    rect.vw = VIDEO_PIXEL_VW;
+    rect.hs = 0;
+    rect.hw = VIDEO_PIXEL_HW;
+    Display.Graphics_Read_Setting(
+        DisplayBase::GRAPHICS_LAYER_0,
+        (void *)fbuf_yuv,
+        FRAME_BUFFER_STRIDE_2,
+        DisplayBase::GRAPHICS_FORMAT_YCBCR422,
+        DisplayBase::WR_RD_WRSWA_32_16_8BIT,
+        &rect
+    );
+    Display.Graphics_Start(DisplayBase::GRAPHICS_LAYER_0);
+
+    ThisThread::sleep_for(50);
+    EasyAttach_LcdBacklight(true);
+}
+#endif
+
 static void drp_task(void) {
     JPEG_Converter  Jcu;
     JPEG_Converter::bitmap_buff_info_t bitmap_buff_info;
@@ -290,6 +321,9 @@ static void drp_task(void) {
     // Interrupt callback function setting (Field end signal for recording function in scaler 0)
     Display.Graphics_Irq_Handler_Set(DisplayBase::INT_TYPE_S0_VFIELD, 0, IntCallbackFunc_Vfield);
     Start_Video_Camera();
+#if MBED_CONF_APP_LCD
+    Start_LCD_Display();
+#endif
     frame_timer.start();
 
     R_DK2_Initialize();

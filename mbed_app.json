@@ -11,13 +11,18 @@
         "lcd":{
             "help": "0:disable 1:enable",
             "value": "0"
+        },
+        "lcd-type":{
+            "help": "Please see EasyAttach_CameraAndLCD/README.md",
+            "value": null
         }
     },
     "target_overrides": {
         "*": {
             "platform.stdio-baud-rate": 115200,
             "platform.stdio-convert-newlines": true,
-            "target.macros_add": ["MBED_CONF_APP_MAIN_STACK_SIZE=8192"]
+            "target.macros_add": ["MBED_CONF_APP_MAIN_STACK_SIZE=8192",
+                                  "LCD_SIZE=SD_7INCH"]
         },
         "RZ_A2M_SBEV": {
             "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"]
