@@ -200,17 +200,36 @@ Add ``target.bootloader_img`` and ``target.app_offset`` to ``mbed_app.json`` as 
         },
         "RZ_A2M_EVB": {
             "target.bootloader_img" : "bootloader_d_n_d/RZ_A2M_EVB_boot.bin",
-            "target.app_offset"     : "0x20000"
+            "target.app_offset"     : "0x20000",
+            "esp32.wifi-en" : "PD_6",
+            "esp32.wifi-tx" : "P6_3",
+            "esp32.wifi-rx" : "P6_2",
+            "esp32.provide-default": true,
+            "esp32.wifi-baudrate":400000
         },
         "RZ_A2M_SBEV": {
             "target.bootloader_img" : "bootloader_d_n_d/RZ_A2M_SBEV_boot.bin",
             "target.app_offset"     : "0x20000",
-            "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"]
+            "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"],
+            "esp32.wifi-en" : "PJ_7",
+            "esp32.wifi-tx" : "PJ_2",
+            "esp32.wifi-rx" : "PJ_1",
+            "esp32.wifi-rts": "PJ_3",
+            "esp32.wifi-cts": "PJ_4",
+            "esp32.provide-default": true,
+            "esp32.wifi-baudrate":1152000
         },
         "SEMB1402": {
             "target.bootloader_img" : "bootloader_d_n_d/SEMB1402_boot.bin",
             "target.app_offset"     : "0x20000",
-            "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"]
+            "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"],
+            "esp32.wifi-en" : "PH_6",
+            "esp32.wifi-tx" : "PF_5",
+            "esp32.wifi-rx" : "PF_4",
+            "esp32.wifi-rts": "PF_6",
+            "esp32.wifi-cts": "PH_2",
+            "esp32.provide-default": true,
+            "esp32.wifi-baudrate":1152000
         }
     }
 }

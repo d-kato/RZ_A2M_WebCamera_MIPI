@@ -46,18 +46,10 @@
   #error "Not supported"
 #elif (NETWORK_TYPE == 2)
   #include "ESP32Interface.h"
-  #if defined(TARGET_RZ_A2M_EVB)
-  ESP32Interface network(PD_6, NC, P6_3, P6_2, false, NC, NC, 400000);
-  #else
   ESP32Interface network;
-  #endif
 #elif (NETWORK_TYPE == 3)
   #include "ESP32InterfaceAP.h"
-  #if defined(TARGET_RZ_A2M_EVB)
-  ESP32InterfaceAP network(PD_6, NC, P6_3, P6_2, false, NC, NC, 400000);
-  #else
   ESP32InterfaceAP network;
-  #endif
 #else
   #error NETWORK_TYPE error
 #endif /* NETWORK_TYPE */
