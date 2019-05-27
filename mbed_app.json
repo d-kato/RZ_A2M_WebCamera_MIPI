@@ -25,7 +25,7 @@
                                   "LCD_SIZE=SD_7INCH"]
         },
         "RZ_A2M_EVB": {
-            "esp32.wifi-en" : "PD_6",
+            "esp32.wifi-en" : "P6_1",
             "esp32.wifi-tx" : "P6_3",
             "esp32.wifi-rx" : "P6_2",
             "esp32.provide-default": true,
