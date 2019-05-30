@@ -201,7 +201,7 @@ Add ``target.bootloader_img`` and ``target.app_offset`` to ``mbed_app.json`` as 
         "RZ_A2M_EVB": {
             "target.bootloader_img" : "bootloader_d_n_d/RZ_A2M_EVB_boot.bin",
             "target.app_offset"     : "0x20000",
-            "esp32.wifi-en" : "PD_6",
+            "esp32.wifi-en" : "P6_1",
             "esp32.wifi-tx" : "P6_3",
             "esp32.wifi-rx" : "P6_2",
             "esp32.provide-default": true,
