@@ -111,23 +111,12 @@ static void set_param_16bit(const char* path, char* str, uint16_t* pram, uint16_
     sprintf(str, "%04x", *pram);
 }
 
-// Temporary bug fix for Simple ISP library.
 static void set_param_bias(const char* path, char* str, int8_t* pram) {
-    int8_t wk_data;
-
     if (*path != '\0') {
         int32_t val = strtol(path+1, NULL, 16);
-        wk_data = (int8_t)val;
-        if (wk_data < 0) {
-            wk_data = (-129 - wk_data);
-        }
-        *pram = wk_data;
+        *pram = (int8_t)val;
     }
-    wk_data = *pram;
-    if (wk_data < 0) {
-        wk_data = (-129 - wk_data);
-    }
-    sprintf(str, "%02x", wk_data & 0x00FF);
+    sprintf(str, "%02x", *pram & 0x00FF);
 }
 
 static void set_param_8bit(const char* path, char* str, uint8_t* pram) {
@@ -354,10 +343,9 @@ static void drp_task(void) {
     param_isp_req.gain_g = 0x1000;
     param_isp_req.gain_b = 0x1C00;
 
-    // Temporary bug fix for Simple ISP library.
-    param_isp_req.bias_r = (-129 +16); // -16
-    param_isp_req.bias_g = (-129 +16); // -16
-    param_isp_req.bias_b = (-129 +16); // -16
+    param_isp_req.bias_r = -16;
+    param_isp_req.bias_g = -16;
+    param_isp_req.bias_b = -16;
 
     set_gamma = 1.0;
     for (int i = 0; i < 256; i++) {

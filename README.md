@@ -28,6 +28,20 @@ Please see ``mbed-gr-libs/drp-for-mbed/TARGET_RZ_A2XX/r_drp/doc`` for details.
 * SBEV-RZ/A2M or SEMB1402
   * IoT-Engine WIFI ESP32 (SEMB1401-1)
 
+
+## About custom boot loaders
+This sample uses a custom boot loader, and you can drag & drop the "xxxx_application.bin" file to write the program.  
+
+1. Hold down ``SW3`` and press the reset button. (Or turn on the power.)  
+2. Connect the USB cable to the PC, you can find the ``MBED`` directory.  
+3. Drag & drop ``xxxx_application.bin`` to the ``MBED`` directory.  
+4. When writing is completed, press the reset button.  
+
+**Attention!**  
+For the first time only, you need to write a custom bootloader as following.  
+[How to write a custom boot loader](https://github.com/d-kato/bootloader_d_n_d)  
+
+
 ## How to use
 1. Please change the source code according to the environment to be used before building.  
 When connecting the Ethernet cable directly to your computer, please set ``0`` in ``USE_DHCP`` macro of ``main.cpp`` file.  
@@ -163,81 +177,3 @@ Please refer to ``mbed-gr-libs/EasyAttach_CameraAndLCD/README.md`` for details.
 ## Development environment
 Please refer to the following.  
 https://github.com/d-kato/RZ_A2M_Mbed_samples
-
-
-## Custom boot loader
-By using the custom boot loader, you can drag & drop the .bin file to write the program.  
-When using for the first time, please write a custom boot loader. Unzip ``bootloader_d_n_d/elf.zip`` and write the corresponding boot loader. (Refer to ``How to download by use e2studio``.)  
-
-
-Add ``target.bootloader_img`` and ``target.app_offset`` to ``mbed_app.json`` as below.  
-```
-{
-    "config": {
-        "camera":{
-            "help": "0:disable 1:enable",
-            "value": "1"
-        },
-        "camera-type":{
-            "help": "Please see EasyAttach_CameraAndLCD/README.md",
-            "value": null
-        },
-        "lcd":{
-            "help": "0:disable 1:enable",
-            "value": "0"
-        },
-        "lcd-type":{
-            "help": "Please see EasyAttach_CameraAndLCD/README.md",
-            "value": null
-        }
-    },
-    "target_overrides": {
-        "*": {
-            "platform.stdio-baud-rate": 115200,
-            "platform.stdio-convert-newlines": true,
-            "target.macros_add": ["MBED_CONF_APP_MAIN_STACK_SIZE=8192",
-                                  "LCD_SIZE=SD_7INCH"]
-        },
-        "RZ_A2M_EVB": {
-            "target.bootloader_img" : "bootloader_d_n_d/RZ_A2M_EVB_boot.bin",
-            "target.app_offset"     : "0x20000",
-            "esp32.wifi-en" : "P6_1",
-            "esp32.wifi-tx" : "P6_3",
-            "esp32.wifi-rx" : "P6_2",
-            "esp32.provide-default": true,
-            "esp32.wifi-baudrate":400000
-        },
-        "RZ_A2M_SBEV": {
-            "target.bootloader_img" : "bootloader_d_n_d/RZ_A2M_SBEV_boot.bin",
-            "target.app_offset"     : "0x20000",
-            "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"],
-            "esp32.wifi-en" : "PJ_7",
-            "esp32.wifi-tx" : "PJ_2",
-            "esp32.wifi-rx" : "PJ_1",
-            "esp32.wifi-rts": "PJ_3",
-            "esp32.wifi-cts": "PJ_4",
-            "esp32.provide-default": true,
-            "esp32.wifi-baudrate":1152000
-        },
-        "SEMB1402": {
-            "target.bootloader_img" : "bootloader_d_n_d/SEMB1402_boot.bin",
-            "target.app_offset"     : "0x20000",
-            "target.macros_add"     : ["OVERRIDE_CONSOLE_USBSERIAL"],
-            "esp32.wifi-en" : "PH_6",
-            "esp32.wifi-tx" : "PF_5",
-            "esp32.wifi-rx" : "PF_4",
-            "esp32.wifi-rts": "PF_6",
-            "esp32.wifi-cts": "PH_2",
-            "esp32.provide-default": true,
-            "esp32.wifi-baudrate":1152000
-        }
-    }
-}
-```
-
-Build the program. Two files ``RZ_A2M_WebCamera_MIPI.bin`` and ``RZ_A2M_WebCamera_MIPI_application.bin`` are created.  
-
-Hold down ``SW3`` and press the reset button. (Or turn on the power.)  
-Connect the USB cable to the PC, you can find the ``MBED`` directory.  
-Drag & drop ``RZ_A2M_WebCamera_MIPI_application.bin`` to the ``MBED`` directory.  
-When writing is completed, press the reset button.  
