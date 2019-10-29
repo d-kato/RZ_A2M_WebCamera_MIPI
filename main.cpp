@@ -413,7 +413,6 @@ static void drp_task(void) {
 static void mount_romramfs(void) {
     FILE * fp;
 
-    romram_bd.SetRomAddr(0x20000000, 0x2FFFFFFF);
     fs.format(&romram_bd, 512);
     fs.mount(&romram_bd);
 
