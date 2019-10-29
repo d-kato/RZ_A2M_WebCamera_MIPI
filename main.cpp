@@ -426,6 +426,11 @@ static void mount_romramfs(void) {
     fp = fopen("/storage/camera.js", "w");
     fwrite(camaera_js_tbl, sizeof(char), sizeof(camaera_js_tbl), fp);
     fclose(fp);
+
+    //favicon.ico
+    fp = fopen("/storage/favicon.ico", "w");
+    fwrite(favicon_ico_tbl, sizeof(char), sizeof(favicon_ico_tbl), fp);
+    fclose(fp);
 }
 
 #if (SCAN_NETWORK == 1) && (NETWORK_TYPE != 3)
