@@ -158,6 +158,7 @@ In addition, you can change the number of pixels of the image by changing the fo
 
 ### LCD setting
 You can turn on the LCD display by changing the ``mbed_app.json`` file.  
+When the LCD is enabled, camera images are not displayed in the web browser. Only the ISP setting screen is displayed.  
 Please refer to ``mbed-gr-libs/EasyAttach_CameraAndLCD/README.md`` for details.  
 ```
 {
@@ -169,7 +170,7 @@ Please refer to ``mbed-gr-libs/EasyAttach_CameraAndLCD/README.md`` for details.
         },
         === omit ===
 ```
-** Requirements **
+**Requirements**
 * ``RZ/A2M Evaluation Board Kit`` : Display Output Board  
 * ``SBEV-RZ/A2M`` : LVDS To HDMI Board  
 * ``SEMB1402`` : LVDS To HDMI Board  

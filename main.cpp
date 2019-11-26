@@ -8,9 +8,8 @@
 #include "RomRamBlockDevice.h"
 #include "SDBlockDevice_GRBoard.h"
 #include "EthernetInterface.h"
-#include "file_table.h"         //Binary data of web pages
 #include "DhcpServer.h"
-#include "Pi_ExposureControl.h"
+#include "picamera_ctl.h"
 
 #include "r_dk2_if.h"
 #include "r_drp_simple_isp.h"
@@ -21,8 +20,8 @@
   #define USE_DHCP             (1)                 /* Select  0(static configuration) or 1(use DHCP) */
   #define NETWORK_TYPE         (2)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
 #else
-  #define USE_DHCP             (0)                 /* Select  0(static configuration) or 1(use DHCP) */
-  #define NETWORK_TYPE         (0)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
+  #define USE_DHCP             (1)                 /* Select  0(static configuration) or 1(use DHCP) */
+  #define NETWORK_TYPE         (2)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
 #endif
 #if (USE_DHCP == 0)
   #define IP_ADDRESS           ("192.168.0.1")     /* IP address      */
@@ -36,7 +35,18 @@
   #define WLAN_SECURITY        NSAPI_SECURITY_WPA_WPA2 /* NSAPI_SECURITY_NONE, NSAPI_SECURITY_WEP, NSAPI_SECURITY_WPA, NSAPI_SECURITY_WPA2 or NSAPI_SECURITY_WPA_WPA2 */
 #endif
 /** JPEG out setting **/
+#if MBED_CONF_APP_LCD
+#define JPEG_SEND              (0)
+#else
+#define JPEG_SEND              (1)
+#endif
 #define JPEG_ENCODE_QUALITY    (75)                /* JPEG encode quality (min:1, max:75 (Considering the size of JpegBuffer, about 75 is the upper limit.)) */
+/** EXPOSURE setting **/
+#define EXPOSURE_MIN           (1000)
+#define EXPOSURE_MAX           (30000)
+#define EXPOSURE_INIT          (2600)
+#define LUMINANCE_MIN          (32)
+#define LUMINANCE_MAX          (38)
 /*****************************/
 
 #if (NETWORK_TYPE == 0)
@@ -54,10 +64,21 @@
   #error NETWORK_TYPE error
 #endif /* NETWORK_TYPE */
 
+#if JPEG_SEND
+#include "file_table.h"               //Binary data of web pages
+#else
+#include "file_table_control_only.h"  //Binary data of web pages
+#endif
+
 /*! Frame buffer stride: Frame buffer stride should be set to a multiple of 32 or 128
     in accordance with the frame buffer burst transfer mode. */
-#define VIDEO_PIXEL_HW         (640)    /* VGA */
-#define VIDEO_PIXEL_VW         (480)    /* VGA */
+#if MBED_CONF_APP_LCD
+  #define VIDEO_PIXEL_HW       LCD_PIXEL_WIDTH
+  #define VIDEO_PIXEL_VW       LCD_PIXEL_HEIGHT
+#else
+  #define VIDEO_PIXEL_HW       (640)    /* VGA */
+  #define VIDEO_PIXEL_VW       (480)    /* VGA */
+#endif
 
 #define FRAME_BUFFER_STRIDE    (((VIDEO_PIXEL_HW * 1) + 63u) & ~63u)
 #define FRAME_BUFFER_STRIDE_2  (((VIDEO_PIXEL_HW * 2) + 31u) & ~31u)
@@ -77,6 +98,7 @@ static SDBlockDevice_GRBoard sd;
 static Mutex param_lock;
 static Timer frame_timer;
 
+#if JPEG_SEND
 static uint8_t JpegBuffer[2][1024 * 128]__attribute((aligned(32)));
 static size_t jcu_encode_size[2];
 static int image_change = 0;
@@ -84,6 +106,7 @@ static int jcu_buf_index_write = 0;
 static int jcu_buf_index_write_done = 0;
 static int jcu_buf_index_read = 0;
 static int jcu_encoding = 0;
+#endif
 
 static r_drp_simple_isp_t param_isp __attribute((section("NC_BSS")));
 static uint32_t accumulate_tbl[9] __attribute((section("NC_BSS")));
@@ -99,6 +122,13 @@ static uint16_t luminance;
 static uint16_t color_comp[3];
 static uint32_t frame_interval;
 static uint8_t auto_exposure;
+#if defined(TARGET_GR_MANGO)
+static picamera_ctl picam(I2C_SDA, I2C_SCL);
+#else
+static picamera_ctl picam(PD_5, PD_4);
+#endif
+static uint16_t set_exposure = EXPOSURE_INIT;
+static bool reset_exposure = false;
 
 static void set_param_16bit(const char* path, char* str, uint16_t* pram, uint16_t max) {
     if (*path != '\0') {
@@ -189,6 +219,7 @@ static void simpile_isp(const char* path, char * ret_str) {
 static int snapshot_req(const char* rootPath, const char* path, const char ** pp_data) {
     static char ret_str[64];
 
+#if JPEG_SEND
     if (strcmp(rootPath, "/camera") == 0) {
         int encode_size;
 
@@ -202,7 +233,9 @@ static int snapshot_req(const char* rootPath, const char* path, const char ** pp
         encode_size = (int)jcu_encode_size[jcu_buf_index_read];
 
         return encode_size;
-    } else if (strcmp(rootPath, "/simple_isp") == 0) {
+    } else 
+#endif
+    if (strcmp(rootPath, "/simple_isp") == 0) {
         simpile_isp(path, ret_str);
         *pp_data = (const char *)ret_str;
         return strlen(ret_str);
@@ -221,6 +254,11 @@ static int snapshot_req(const char* rootPath, const char* path, const char ** pp
         } else {
             sprintf(ret_str, "off");
         }
+        *pp_data = (const char *)ret_str;
+        return strlen(ret_str);
+    } else if (strcmp(rootPath, "/reset_exposure") == 0) {
+        reset_exposure = true;
+        sprintf(ret_str, "ok");
         *pp_data = (const char *)ret_str;
         return strlen(ret_str);
     } else {
@@ -247,6 +285,7 @@ static void cb_drp_finish(uint8_t id) {
     drpTask.flags_set(set_flgs);
 }
 
+#if JPEG_SEND
 static void JcuEncodeCallBackFunc(JPEG_Converter::jpeg_conv_error_t err_code) {
     if (err_code == JPEG_Converter::JPEG_CONV_OK) {
         jcu_buf_index_write_done = jcu_buf_index_write;
@@ -254,6 +293,7 @@ static void JcuEncodeCallBackFunc(JPEG_Converter::jpeg_conv_error_t err_code) {
     }
     jcu_encoding = 0;
 }
+#endif
 
 static void Start_Video_Camera(void) {
     // Video capture setting (progressive form fixed)
@@ -294,9 +334,7 @@ static void Start_LCD_Display(void) {
 #endif
 
 static void drp_task(void) {
-    JPEG_Converter  Jcu;
-    JPEG_Converter::bitmap_buff_info_t bitmap_buff_info;
-    JPEG_Converter::encode_options_t   encode_options;
+    bool coarse_send_req = false;
 
     EasyAttach_Init(Display);
     // Interrupt callback function setting (Field end signal for recording function in scaler 0)
@@ -355,6 +393,11 @@ static void drp_task(void) {
     param_isp_req.gamma = 1;
     auto_exposure = 0;
 
+#if JPEG_SEND
+    JPEG_Converter  Jcu;
+    JPEG_Converter::bitmap_buff_info_t bitmap_buff_info;
+    JPEG_Converter::encode_options_t   encode_options;
+
     // Jpeg setting
     Jcu.SetQuality(JPEG_ENCODE_QUALITY);
     bitmap_buff_info.width              = VIDEO_PIXEL_HW;
@@ -364,6 +407,7 @@ static void drp_task(void) {
     encode_options.encode_buff_size     = sizeof(JpegBuffer[0]);
     encode_options.p_EncodeCallBackFunc = &JcuEncodeCallBackFunc;
     encode_options.input_swapsetting    = JPEG_Converter::WR_RD_WRSWA_32_16BIT;
+#endif
 
     while (true) {
         ThisThread::flags_wait_all(DRP_FLG_CAMER_IN);
@@ -392,9 +436,39 @@ static void drp_task(void) {
 
         // Exposure control
         if (auto_exposure != 0) {
-            Pi_ExposureControl(luminance);
+            uint32_t wk_exposure;
+
+            if (coarse_send_req != false) {
+                // Wait for settings to be reflected.
+                coarse_send_req = false;
+            } else if ((luminance < LUMINANCE_MIN) && (set_exposure < EXPOSURE_MAX)) {
+                wk_exposure = (uint32_t)((float)set_exposure * ((float)LUMINANCE_MIN / (float)luminance));
+                if (wk_exposure > EXPOSURE_MAX) {
+                    wk_exposure = EXPOSURE_MAX;
+                }
+                set_exposure = wk_exposure;
+                coarse_send_req = true;
+            } else if ((luminance > LUMINANCE_MAX) && (set_exposure > EXPOSURE_MIN)) {
+                wk_exposure = (uint32_t)((float)set_exposure * ((float)LUMINANCE_MAX / (float)luminance));
+                if (wk_exposure < EXPOSURE_MIN) {
+                    wk_exposure = EXPOSURE_MIN;
+                }
+                set_exposure = wk_exposure;
+                coarse_send_req = true;
+            } else {
+                // do nothing
+            }
+            if (coarse_send_req) {
+                picam.SetExposureSpeed(set_exposure);
+            }
+        }
+        if (reset_exposure) {
+            reset_exposure = false;
+            set_exposure = EXPOSURE_INIT;
+            picam.SetExposureSpeed(set_exposure);
         }
 
+#if JPEG_SEND
         // Jpeg convert
         jcu_encoding = 1;
         if (jcu_buf_index_read == jcu_buf_index_write) {
@@ -407,6 +481,7 @@ static void drp_task(void) {
             jcu_encode_size[jcu_buf_index_write] = 0;
             jcu_encoding = 0;
         }
+#endif
     }
 }
 
@@ -597,6 +672,7 @@ int main(void) {
     HTTPServerAddHandler<SnapshotHandler>("/camera"); //Camera
     HTTPServerAddHandler<SnapshotHandler>("/simple_isp");
     HTTPServerAddHandler<SnapshotHandler>("/auto_exposure");
+    HTTPServerAddHandler<SnapshotHandler>("/reset_exposure");
     FSHandler::mount("/storage", "/");
     HTTPServerAddHandler<FSHandler>("/");
     HTTPServerStart(&network, 80);

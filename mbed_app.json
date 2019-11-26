@@ -21,8 +21,14 @@
         "*": {
             "platform.stdio-baud-rate": 115200,
             "platform.stdio-convert-newlines": true,
-            "target.macros_add": ["MBED_CONF_APP_MAIN_STACK_SIZE=8192",
-                                  "LCD_SIZE=SD_7INCH"]
+            "target.macros_add": ["MBED_CONF_APP_MAIN_STACK_SIZE=8192"]
+        },
+        "GR_MANGO": {
+            "esp32.wifi-en" : "P4_0",
+            "esp32.wifi-tx" : "P4_2",
+            "esp32.wifi-rx" : "P4_1",
+            "esp32.provide-default": true,
+            "esp32.wifi-baudrate":400000
         },
         "RZ_A2M_EVB": {
             "target.bootloader_img" : "bootloader_d_n_d/RZ_A2M_EVB_boot.bin",
