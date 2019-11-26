@@ -176,6 +176,7 @@ Please refer to ``mbed-gr-libs/EasyAttach_CameraAndLCD/README.md`` for details.
         === omit ===
 ```
 **Requirements**
+* ``GR-MANGO alpha version`` : The board has an HDMI output   
 * ``RZ/A2M Evaluation Board Kit`` : Display Output Board  
 * ``SBEV-RZ/A2M`` : LVDS To HDMI Board  
 * ``SEMB1402`` : LVDS To HDMI Board  
