@@ -20,8 +20,8 @@
   #define USE_DHCP             (1)                 /* Select  0(static configuration) or 1(use DHCP) */
   #define NETWORK_TYPE         (2)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
 #else
-  #define USE_DHCP             (1)                 /* Select  0(static configuration) or 1(use DHCP) */
-  #define NETWORK_TYPE         (2)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
+  #define USE_DHCP             (0)                 /* Select  0(static configuration) or 1(use DHCP) */
+  #define NETWORK_TYPE         (0)                 /* Select  0(Ethernet), 1(BP3595), 2(ESP32 STA) ,3(ESP32 AP) */
 #endif
 #if (USE_DHCP == 0)
   #define IP_ADDRESS           ("192.168.0.1")     /* IP address      */
