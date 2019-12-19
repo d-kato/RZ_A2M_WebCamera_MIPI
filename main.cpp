@@ -72,7 +72,10 @@
 
 /*! Frame buffer stride: Frame buffer stride should be set to a multiple of 32 or 128
     in accordance with the frame buffer burst transfer mode. */
-#if MBED_CONF_APP_LCD
+#if MBED_CONF_APP_CAMERA_TYPE == CAMERA_RASPBERRY_PI_FISHEYE
+  #define VIDEO_PIXEL_HW       (640)
+  #define VIDEO_PIXEL_VW       (616)
+#elif MBED_CONF_APP_LCD
   #define VIDEO_PIXEL_HW       LCD_PIXEL_WIDTH
   #define VIDEO_PIXEL_VW       LCD_PIXEL_HEIGHT
 #else
