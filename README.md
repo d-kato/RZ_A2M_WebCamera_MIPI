@@ -10,18 +10,18 @@ Simple ISP is an ISP (Image Signal Processor) most suitable for image recognitio
 Please see ``mbed-gr-libs/drp-for-mbed/TARGET_RZ_A2XX/r_drp/doc`` for details.  
 
 ## Requirements
-* GR-MANGO alpha version, [RZ/A2M Evaluation Board Kit](https://www.renesas.com/jp/en/products/software-tools/boards-and-kits/eval-kits/rz-a2m-evaluation-board-kit.html) , [SBEV-RZ/A2M](http://www.shimafuji.co.jp/products/1486) or [SEMB1402](http://www.shimafuji.co.jp/products/1505)
+* GR-MANGO beta version, [RZ/A2M Evaluation Board Kit](https://www.renesas.com/jp/en/products/software-tools/boards-and-kits/eval-kits/rz-a2m-evaluation-board-kit.html) , [SBEV-RZ/A2M](http://www.shimafuji.co.jp/products/1486) or [SEMB1402](http://www.shimafuji.co.jp/products/1505)
 * RaspberryPi camera
 * Computer
 
 #### In the case of Ethernet Connection
-* GR-MANGO alpha version, RZ/A2M Evaluation Board Kit or SBEV-RZ/A2M
+* GR-MANGO beta version, RZ/A2M Evaluation Board Kit or SBEV-RZ/A2M
   * Ethernet cable
 * SEMB1402
   * Not supported
 
 #### In the case of WiFi Connection
-* GR-MANGO alpha version
+* GR-MANGO beta version
   * [Pmod ESP32](https://store.digilentinc.com/pmod-esp32-wireless-communication-module/)  
   ![](docs/img/Pmod_ESP32_gr-mango_img.jpg)  
   ![](docs/img/Pmod_ESP32_connection_gr-mango.png)  
@@ -34,6 +34,7 @@ Please see ``mbed-gr-libs/drp-for-mbed/TARGET_RZ_A2XX/r_drp/doc`` for details.
 
 
 ## About custom boot loaders
+**<font color="Red">Attention! GR-MANGO is not supported.</font>**  
 This sample uses a custom boot loader, and you can drag & drop the "xxxx_application.bin" file to write the program.  
 
 1. Hold down ``SW3 (UB0)`` and press the reset button. (Or turn on the power.)  
@@ -175,7 +176,7 @@ Please refer to ``mbed-gr-libs/EasyAttach_CameraAndLCD/README.md`` for details.
         === omit ===
 ```
 **Requirements**
-* ``GR-MANGO alpha version`` : The board has an HDMI output   
+* ``GR-MANGO beta version`` : The board has an HDMI output   
 * ``RZ/A2M Evaluation Board Kit`` : Display Output Board  
 * ``SBEV-RZ/A2M`` : LVDS To HDMI Board  
 * ``SEMB1402`` : LVDS To HDMI Board  
