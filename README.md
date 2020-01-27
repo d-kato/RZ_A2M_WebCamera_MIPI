@@ -34,7 +34,7 @@ Please see ``mbed-gr-libs/drp-for-mbed/TARGET_RZ_A2XX/r_drp/doc`` for details.
 
 
 ## About custom boot loaders
-**<font color="Red">Attention! GR-MANGO is not supported.</font>**  
+**<font color="Red">Attention! When using GR-MANGO, please use DAPLink without using a custom boot loader.</font>**  
 This sample uses a custom boot loader, and you can drag & drop the "xxxx_application.bin" file to write the program.  
 
 1. Hold down ``SW3 (UB0)`` and press the reset button. (Or turn on the power.)  
